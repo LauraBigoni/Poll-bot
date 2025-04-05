@@ -46,6 +46,12 @@ const commands = [
         description: 'Duration (e.g., 1h, 30m) - leave blank for no expiration',
         type: 3, // STRING
         required: false
+      },
+      {
+        name: 'maxVotes',
+        description: 'Maximum number of votes allowed per user (whole number)',
+        type: 4, // INT
+        required: false
       }
     ]
   },

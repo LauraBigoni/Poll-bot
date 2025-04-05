@@ -1,0 +1,21 @@
+{
+  "name": "poll-bot",
+  "version": "1.0.0",
+  "description": "Advanced Discord Poll and Survey Bot",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "register": "node deploy-commands.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@discordjs/rest": "^2.4.3",
+    "discord-api-types": "^0.37.119",
+    "discord.js": "^14.12.1",
+    "dotenv": "^16.4.7",
+    "mongoose": "^8.0.3",
+    "ms": "^2.1.3"
+  }
+}

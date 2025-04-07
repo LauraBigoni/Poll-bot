@@ -8,13 +8,21 @@ class PollManager {
 
   async handlePollCommand(interaction) {
     const question = interaction.options.getString('question');
-    const options = interaction.options.getString('options').split(',');
+    const options = interaction.options.getString('options').split(',').map(opt => opt.trim());
     const allowMultiple = interaction.options.getBoolean('multiple') || false;
     const anonymous = interaction.options.getBoolean('anonymous') || false;
     const duration = interaction.options.getString('duration');
     const maxVotes = allowMultiple ? Math.max(1, interaction.options.getInteger('maxVotes') || 1) : 1;
-  
-    const pollId = `poll-${interaction.id}`; // Store this for consistent use
+
+    const pollId = `poll-${interaction.id}`;
+
+    // Validate options
+    if (options.length > 25) {
+      return interaction.reply({
+        content: 'You can only have up to 25 options in a poll!',
+        ephemeral: true
+      });
+    }
 
     const footerText = [
       duration ? `Ends in ${duration}` : null,
@@ -25,21 +33,21 @@ class PollManager {
 
     const embed = new EmbedBuilder()
       .setTitle(question)
-      .setDescription(options.map((opt, i) => `${i + 1}. ${opt.trim()}`).join('\n'))
+      .setDescription(options.map((opt, i) => `${i + 1}. ${opt}`).join('\n'))
       .setFooter({ text: `${footerText} | Total votes: 0` })
       .setColor('#5865F2');
 
-    const actionRow = new ActionRowBuilder().addComponents(
-      options.map((_, i) => new ButtonBuilder()
-        .setCustomId(`${pollId}-${i}`) // Use consistent pollId format
-        .setLabel(`${i + 1}`)
-        .setStyle(ButtonStyle.Secondary))
-    );
+    // Create button rows dynamically (max 5 buttons per row)
+    const buttonRows = this.createButtonRows(options, pollId);
 
-    await interaction.reply({ embeds: [embed], components: [actionRow] });
+    const reply = await interaction.reply({
+      embeds: [embed],
+      components: buttonRows,
+      fetchReply: true
+    });
 
     this.activePolls.set(pollId, {
-      message: await interaction.fetchReply(),
+      message: reply,
       options,
       votes: Array(options.length).fill(0),
       voters: new Map(),
@@ -48,7 +56,7 @@ class PollManager {
       maxVotes,
       endTime: duration ? Date.now() + ms(duration) : null,
       voteDetails: {},
-      id: pollId // Store ID in poll object
+      id: pollId
     });
 
     if (duration) {
@@ -56,12 +64,34 @@ class PollManager {
     }
   }
 
-  async handleButtonInteraction(interaction) {
-    // Split the custom ID correctly (poll-123456789012345678-0)
-    const [prefix, interactionId, optionIndex] = interaction.customId.split('-');
-    const pollId = `${prefix}-${interactionId}`;  // Reconstruct full poll ID
+  createButtonRows(options, pollId) {
+    const rows = [];
+    const buttonsPerRow = 5;
 
-    const poll = this.activePolls.get(pollId);  // Now correctly matches stored ID
+    for (let i = 0; i < options.length; i += buttonsPerRow) {
+      const row = new ActionRowBuilder();
+      const chunk = options.slice(i, i + buttonsPerRow);
+
+      chunk.forEach((_, index) => {
+        const optionIndex = i + index;
+        row.addComponents(
+          new ButtonBuilder()
+            .setCustomId(`${pollId}-${optionIndex}`)
+            .setLabel(`${optionIndex + 1}`)
+            .setStyle(ButtonStyle.Secondary)
+        );
+      });
+
+      rows.push(row);
+    }
+
+    return rows;
+  }
+
+  async handleButtonInteraction(interaction) {
+    const [prefix, interactionId, optionIndex] = interaction.customId.split('-');
+    const pollId = `${prefix}-${interactionId}`;
+    const poll = this.activePolls.get(pollId);
 
     if (!poll) {
       return interaction.reply({
@@ -70,7 +100,6 @@ class PollManager {
       });
     }
 
-    // Rest of the method remains the same...
     const userId = interaction.user.id;
     const userVotes = poll.voters.get(userId) || [];
     const isAlreadyVoted = userVotes.includes(optionIndex);
@@ -87,10 +116,10 @@ class PollManager {
     } else {
       // New vote validation logic
       const maxAllowed = poll.allowMultiple ? poll.maxVotes : 1;
-      
+
       if (userVotes.length >= maxAllowed) {
         return interaction.reply({
-          content: poll.allowMultiple 
+          content: poll.allowMultiple
             ? `You can only vote ${maxAllowed} times in this poll!`
             : "This poll only allows one vote per user!",
           ephemeral: true
@@ -105,7 +134,7 @@ class PollManager {
       poll.voteDetails[optionIndex].push(userId);
     }
 
-    const updatedEmbed = this.createPublicEmbed(poll, interaction);
+    const updatedEmbed = this.createPublicEmbed(poll);
     await poll.message.edit({ embeds: [updatedEmbed] });
 
     await interaction.reply({
@@ -114,9 +143,8 @@ class PollManager {
     });
   }
 
-  createPublicEmbed(poll) { // Remove interaction parameter
+  createPublicEmbed(poll) {
     if (poll.anonymous) {
-      // Private poll - ALWAYS show basic view to everyone
       return new EmbedBuilder()
         .setTitle(poll.message.embeds[0].title)
         .setDescription(
